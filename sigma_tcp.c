@@ -185,7 +185,10 @@ static void handle_connection(int fd)
 				buf[0] = COMMAND_READ_RESPONSE;
 				buf[1] = (0x4 + len) >> 8;
 				buf[2] = (0x4 + len) & 0xff;
-				buf[3] = backend_ops->read(addr, len, buf + 4);
+				if ((ret = backend_ops->read(addr, len, buf + 4)) < 0) {
+					printf("backend read returned %i (%s)\n", ret, strerror(errno));
+				}
+				buf[3] = ret;
 				write(fd, buf, 4 + len);
 			} else if (command == COMMAND_WRITE_REQUEST) {
 				packet_len = (p[3] << 8) | p[4];
@@ -212,7 +215,9 @@ static void handle_connection(int fd)
 					p += WRITE_REQUEST_HEADER_LEN;
 					count -= WRITE_REQUEST_HEADER_LEN;
 
-					backend_ops->write(addr, len, p);
+					if ((ret = backend_ops->write(addr, len, p)) < 0) {
+						printf("backend read returned %i (%s)\n", ret, strerror(errno));
+					}
 					
 					p += len;
 					count -= len;
