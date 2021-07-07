@@ -133,8 +133,10 @@ static void handle_connection(int fd)
 	uint8_t *buf;
 	size_t buf_size;
 	uint8_t *p;
+	uint16_t packet_len;
 	unsigned int len;
 	unsigned int addr;
+	uint8_t ic_num;
 /*	unsigned int total_len;*/
 	int count, ret;
 	char command;
@@ -162,13 +164,17 @@ static void handle_connection(int fd)
 
 		while (count >= 7) {
 			command = p[0];
-/*			total_len = (p[1] << 8) | p[2];*/
-			len = (p[4] << 8) | p[5];
-			addr = (p[6] << 8) | p[7];
 
 			if (command == COMMAND_READ) {
+				packet_len = (p[1] << 8) | p[2];
+				ic_num = p[3];
+				len = (p[4] << 8) | p[5];
+				addr = (p[6] << 8) | p[7];
+
 				p += 8;
 				count -= 8;
+
+			    printf("received read command (0x%02X) packet_len: %i, IC: %X len: %i addr: 0x%04X\n", command, packet_len, ic_num, len, addr);
 
 				buf[0] = COMMAND_WRITE;
 				buf[1] = (0x4 + len) >> 8;
@@ -176,6 +182,11 @@ static void handle_connection(int fd)
 				buf[3] = backend_ops->read(addr, len, buf + 4);
 				write(fd, buf, 4 + len);
 			} else {
+				packet_len = (p[3] << 8) | p[4];
+				ic_num = p[5];
+				len = (p[6] << 8) | p[7];
+				addr = (p[8] << 8) | p[9];
+
 				/* not enough data, fetch next bytes */
 				if (count < len + 8) {
 					if (buf_size < len + 8) {
@@ -184,8 +195,12 @@ static void handle_connection(int fd)
 						if (!buf)
 							goto exit;
 					}
+					printf("processing write command (0x%02X) IC: %X packet_len: %i, waiting for %i bytes, received %i\n", command, ic_num, packet_len, len + 8, count);
 					break;
 				}
+
+				printf("received write command (0x%02X) packet_len: %i, IC: %X, len: %i addr: 0x%04X\n", command, packet_len, ic_num, len, addr);
+
 				backend_ops->write(addr, len, p + 8);
 				p += len + 8;
 				count -= len + 8;
@@ -194,6 +209,7 @@ static void handle_connection(int fd)
 	}
 
 exit:
+	printf("exiting\n");
 	free(buf);
 }
 
