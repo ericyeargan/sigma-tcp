@@ -80,8 +80,11 @@ static int show_addrs(int sck)
 	return 0;
 }
 
-#define COMMAND_READ 0x0a
-#define COMMAND_WRITE 0x0b
+#define COMMAND_READ_REQUEST 0x0A
+#define COMMAND_READ_RESPONSE 0x0B
+#define COMMAND_WRITE_REQUEST 0x09
+#define COMMAND_WRITE_RESPONSE 0x0B
+
 
 static uint8_t debug_data[256];
 
@@ -128,6 +131,9 @@ static void *get_in_addr(struct sockaddr *sa)
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
+#define READ_REQUEST_HEADER_LEN	8
+#define WRITE_REQUEST_HEADER_LEN 10
+
 static void handle_connection(int fd)
 {
 	uint8_t *buf;
@@ -137,10 +143,9 @@ static void handle_connection(int fd)
 	unsigned int len;
 	unsigned int addr;
 	uint8_t ic_num;
-/*	unsigned int total_len;*/
 	int count, ret;
 	char command;
-
+	
 	count = 0;
 
 	buf_size = 256;
@@ -155,6 +160,8 @@ static void handle_connection(int fd)
 		p = buf + count;
 
 		ret = read(fd, p, buf_size - count);
+		printf("read returned %i\n", ret);
+
 		if (ret <= 0)
 			break;
 
@@ -162,48 +169,57 @@ static void handle_connection(int fd)
 
 		count += ret;
 
-		while (count >= 7) {
+		while (count >= READ_REQUEST_HEADER_LEN) {
 			command = p[0];
-
-			if (command == COMMAND_READ) {
+			if (command == COMMAND_READ_REQUEST) {
 				packet_len = (p[1] << 8) | p[2];
 				ic_num = p[3];
 				len = (p[4] << 8) | p[5];
 				addr = (p[6] << 8) | p[7];
 
-				p += 8;
-				count -= 8;
+				p += READ_REQUEST_HEADER_LEN;
+				count -= READ_REQUEST_HEADER_LEN;
 
 			    printf("received read command (0x%02X) packet_len: %i, IC: %X len: %i addr: 0x%04X\n", command, packet_len, ic_num, len, addr);
 
-				buf[0] = COMMAND_WRITE;
+				buf[0] = COMMAND_READ_RESPONSE;
 				buf[1] = (0x4 + len) >> 8;
 				buf[2] = (0x4 + len) & 0xff;
 				buf[3] = backend_ops->read(addr, len, buf + 4);
 				write(fd, buf, 4 + len);
-			} else {
+			} else if (command == COMMAND_WRITE_REQUEST) {
 				packet_len = (p[3] << 8) | p[4];
 				ic_num = p[5];
 				len = (p[6] << 8) | p[7];
 				addr = (p[8] << 8) | p[9];
 
+				printf("processing write command (0x%02X) IC: %X packet_len: %i received %i\n", command, ic_num, packet_len, count);
+
 				/* not enough data, fetch next bytes */
-				if (count < len + 8) {
-					if (buf_size < len + 8) {
-						buf_size = len + 8;
+				if (count < packet_len) {
+					if (buf_size < packet_len) {
+						printf("reallocating packet buffer with size: %i\n", packet_len);
+						buf_size = packet_len;
 						buf = realloc(buf, buf_size);
 						if (!buf)
 							goto exit;
 					}
-					printf("processing write command (0x%02X) IC: %X packet_len: %i, waiting for %i bytes, received %i\n", command, ic_num, packet_len, len + 8, count);
 					break;
 				}
+				else {
+					printf("received write command packet len: %i addr: 0x%04X\n", len, addr);
 
-				printf("received write command (0x%02X) packet_len: %i, IC: %X, len: %i addr: 0x%04X\n", command, packet_len, ic_num, len, addr);
+					p += WRITE_REQUEST_HEADER_LEN;
+					count -= WRITE_REQUEST_HEADER_LEN;
 
-				backend_ops->write(addr, len, p + 8);
-				p += len + 8;
-				count -= len + 8;
+					backend_ops->write(addr, len, p);
+					
+					p += len;
+					count -= len;
+				}
+			}
+			else {
+				printf("unrecognized command: 0x%02X\n", command);
 			}
 		}
 	}
