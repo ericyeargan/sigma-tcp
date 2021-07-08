@@ -13,7 +13,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include "sigma_tcp.h"
+#include "adau.h"
 
 static const char *regmap_file;
 

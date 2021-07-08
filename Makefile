@@ -2,7 +2,7 @@ DESTDIR=/usr/local
 
 CFLAGS += -O2 -Wall -Werror -pedantic -std=gnu99
 
-sigma_tcp: i2c.c regmap.c
+sigma_tcp: i2c.c regmap.c adau.c
 
 install:
 	install -d $(DESTDIR)/bin

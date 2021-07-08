@@ -21,7 +21,7 @@
 #include <fcntl.h>
 #include <stdbool.h>
 
-#include "sigma_tcp.h"
+#include "adau.h"
 
 #include <netinet/in.h>
 #include <net/if.h>
@@ -80,12 +80,6 @@ static int show_addrs(int sck)
 	return 0;
 }
 
-#define COMMAND_READ_REQUEST 0x0A
-#define COMMAND_READ_RESPONSE 0x0B
-#define COMMAND_WRITE_REQUEST 0x09
-#define COMMAND_WRITE_RESPONSE 0x0B
-
-
 static uint8_t debug_data[256];
 
 static int debug_read(unsigned int addr, unsigned int len, uint8_t *data)
@@ -116,6 +110,9 @@ static int debug_write(unsigned int addr, unsigned int len, const uint8_t *data)
 	return 0;
 }
 
+extern const struct backend_ops i2c_backend_ops;
+extern const struct backend_ops regmap_backend_ops;
+
 static const struct backend_ops debug_backend_ops = {
 	.read = debug_read,
 	.write = debug_write,
@@ -131,6 +128,11 @@ static void *get_in_addr(struct sockaddr *sa)
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
+#define COMMAND_READ_REQUEST 0x0A
+#define COMMAND_READ_RESPONSE 0x0B
+#define COMMAND_WRITE_REQUEST 0x09
+#define COMMAND_WRITE_RESPONSE 0x0B
+
 #define READ_REQUEST_HEADER_LEN	8
 #define WRITE_REQUEST_HEADER_LEN 10
 
@@ -142,7 +144,7 @@ static void handle_connection(int fd)
 	uint16_t packet_len;
 	unsigned int len;
 	unsigned int addr;
-	uint8_t ic_num;
+	/* uint8_t ic_num; */
 	int count, ret;
 	char command;
 	
@@ -160,7 +162,6 @@ static void handle_connection(int fd)
 		p = buf + count;
 
 		ret = read(fd, p, buf_size - count);
-		printf("read returned %i\n", ret);
 
 		if (ret <= 0)
 			break;
@@ -173,30 +174,31 @@ static void handle_connection(int fd)
 			command = p[0];
 			if (command == COMMAND_READ_REQUEST) {
 				packet_len = (p[1] << 8) | p[2];
-				ic_num = p[3];
+				/* ic_num = p[3]; */
 				len = (p[4] << 8) | p[5];
 				addr = (p[6] << 8) | p[7];
 
 				p += READ_REQUEST_HEADER_LEN;
 				count -= READ_REQUEST_HEADER_LEN;
 
-			    printf("received read command (0x%02X) packet_len: %i, IC: %X len: %i addr: 0x%04X\n", command, packet_len, ic_num, len, addr);
+			    /* printf("received read command (0x%02X) packet_len: %i, IC: %X len: %i addr: 0x%04X\n", command, packet_len, ic_num, len, addr); */
+
+				if ((ret = adau_read(backend_ops, addr, len, buf + 4)) < 0) {
+					printf("read returned %i (%s)\n", ret, strerror(errno));
+				}
 
 				buf[0] = COMMAND_READ_RESPONSE;
 				buf[1] = (0x4 + len) >> 8;
 				buf[2] = (0x4 + len) & 0xff;
-				if ((ret = backend_ops->read(addr, len, buf + 4)) < 0) {
-					printf("backend read returned %i (%s)\n", ret, strerror(errno));
-				}
 				buf[3] = ret;
 				write(fd, buf, 4 + len);
 			} else if (command == COMMAND_WRITE_REQUEST) {
 				packet_len = (p[3] << 8) | p[4];
-				ic_num = p[5];
+				/* ic_num = p[5]; */
 				len = (p[6] << 8) | p[7];
 				addr = (p[8] << 8) | p[9];
 
-				printf("processing write command (0x%02X) IC: %X packet_len: %i received %i\n", command, ic_num, packet_len, count);
+				/* printf("processing write command (0x%02X) IC: %X packet_len: %i received %i\n", command, ic_num, packet_len, count); */
 
 				/* not enough data, fetch next bytes */
 				if (count < packet_len) {
@@ -210,12 +212,12 @@ static void handle_connection(int fd)
 					break;
 				}
 				else {
-					printf("received write command packet len: %i addr: 0x%04X\n", len, addr);
+					/* printf("received write command packet len: %i addr: 0x%04X\n", len, addr); */
 
 					p += WRITE_REQUEST_HEADER_LEN;
 					count -= WRITE_REQUEST_HEADER_LEN;
 
-					if ((ret = backend_ops->write(addr, len, p)) < 0) {
+					if ((ret = adau_write(backend_ops, addr, len, p)) < 0) {
 						printf("backend read returned %i (%s)\n", ret, strerror(errno));
 					}
 					

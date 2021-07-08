@@ -17,7 +17,7 @@
 #include <linux/i2c.h>
 #include <linux/i2c-dev.h>
 
-#include "sigma_tcp.h"
+#include "adau.h"
 
 static int i2c_fd;
 static int i2c_dev_addr;
