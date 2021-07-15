@@ -263,8 +263,8 @@ int main(int argc, char *argv[])
 	}
 
 	if (backend_ops->open) {
-		ret = backend_ops->open(argc, argv);
-		if (ret)
+		ret = backend_ops->open(argc, 2, argv);
+		if (ret < 0)
 			exit(1);
 	}
 

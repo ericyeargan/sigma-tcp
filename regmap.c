@@ -17,22 +17,22 @@
 
 static const char *regmap_file;
 
-static int regmap_open(int argc, char *argv[])
+static int regmap_open(int argc, int arg_offset, char *argv[])
 {
 	int fd;
 
-	if (argc < 3)
+	if (argc < arg_offset + 1)
 		printf("Usage: %s regmap <regmap file>\n", argv[0]);
 
-	regmap_file = argv[2];
+	regmap_file = argv[arg_offset];
 
 	fd = open(regmap_file, 0);
 	if (fd < 0) {
 		perror("regmap: Failed to open file");
-		return 1;
+		return -1;
 	}
 	close(fd);
-	return 0;
+	return arg_offset + 1;
 }
 
 static int regmap_read(unsigned int addr, unsigned int len, uint8_t *data)

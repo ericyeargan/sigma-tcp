@@ -22,37 +22,37 @@
 static int i2c_fd;
 static int i2c_dev_addr;
 
-static int i2c_open(int argc, char *argv[])
+static int i2c_open(int argc, int arg_offset, char *argv[])
 {
 	int ret;
 	char *endp;
 
-	if (argc < 4) {
+	if (argc < arg_offset + 2) {
 		fprintf(stderr, "i2c: Usage %s i2c <i2c-dev> <i2c-addr>\n", argv[0]);
-		return 1;
+		return -1;
 	}
 
-	i2c_fd = open(argv[2], O_RDWR);
+	i2c_fd = open(argv[arg_offset], O_RDWR);
 	if (i2c_fd < 0) {
 		perror("i2c: Failed to open i2c device");
-		return 1;
+		return -1;
 	}
 
-	i2c_dev_addr = strtoul(argv[3], &endp, 0);
+	i2c_dev_addr = strtoul(argv[arg_offset + 1], &endp, 0);
 	if (i2c_dev_addr < 0 || i2c_dev_addr > 255 || *endp != '\0') {
 		fprintf(stderr, "i2c: Invalid I2C address: \"%s\"\n", argv[3]);
-		return 1;
+		return -1;
 	}
 
 	ret = ioctl(i2c_fd, I2C_SLAVE_FORCE, i2c_dev_addr);
 	if (ret < 0) {
 		perror("i2c: Failed to set i2c device address");
-		return 1;
+		return -1;
 	}
 
-	printf("i2c: Initalized for device %s-%x\n", argv[2], i2c_dev_addr);
+	printf("i2c: Initalized for device %s-%x\n", argv[arg_offset], i2c_dev_addr);
 
-	return 0;
+	return arg_offset + 2;
 }
 
 static int i2c_read(unsigned int addr, unsigned int len, uint8_t *data)

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <math.h>
 
 #define MAX_DEBUG_DATA_BYTES	8
 
@@ -55,7 +56,46 @@ int adau_write(const struct backend_ops *backend, unsigned int addr, unsigned in
 	return ret;
 }
 
+#define ADI_5_23_MAX_VALUE 16
+#define ADI_5_23_MIN_VALUE -16
+
+#define ADI_5_23_FULL_SCALE_INT	8388608
+
+static int32_t float_to_5_23(float value)
+{
+	if (value > ADI_5_23_MAX_VALUE)
+		value = ADI_5_23_MAX_VALUE;
+	else if (value < ADI_5_23_MIN_VALUE)
+		value = ADI_5_23_MIN_VALUE;
+
+	return (int32_t)(value * ADI_5_23_FULL_SCALE_INT);
+}
+
+static float adi_5_23_to_float(int32_t value)
+{
+	return (float)value / ADI_5_23_FULL_SCALE_INT;
+}
+
+#define PARAMETER_RAM_END_ADDR 	1024
+
+int adau_read_float(const struct backend_ops *backend, unsigned int addr, float *value)
+{
+	int ret;
+	uint8_t data[4];
+	if ((ret = backend->read(addr, sizeof(data), data)) < 0)
+		return ret;
+	int32_t int_value = data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3];
+	*value = adi_5_23_to_float(int_value);
+	return 0;
+}
+
 int adau_write_float(const struct backend_ops *backend, unsigned int addr, float value)
 {
-	return 0;
+	uint8_t data[4];
+	int32_t value_5_23 = float_to_5_23(value);
+	data[0] = (value_5_23 >> 24) & 0xFF;
+	data[1] = (value_5_23 >> 16) & 0xFF;
+	data[2] = (value_5_23 >> 8) & 0xFF;
+	data[3] = value_5_23 & 0xFF;
+	return backend->write(addr, sizeof(data), data);
 }
