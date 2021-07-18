@@ -5,53 +5,68 @@
 #include <string.h>
 #include <math.h>
 
+#include "logging.h"
+
 #define MAX_DEBUG_DATA_BYTES	8
 
-static void print_data(unsigned int len, uint8_t const *data)
+static int format_data(unsigned int len, uint8_t const *data, char* dest_buffer)
 {
 	int i;
+	char* dest = dest_buffer;
+	
 	for (i = 0; i < MAX_DEBUG_DATA_BYTES; i++) 
 	{
 		if (i < len)
-			printf(" 0x%02X", data[i]);
+		{
+			dest += sprintf(dest, " 0x%02X", data[i]);
+		}			
 		else
 			break;
 	}
 	
 	if (len > MAX_DEBUG_DATA_BYTES)
 	{
-		printf(" ...");
+		dest += sprintf(dest, " ...");
 	}
+
+	return dest - dest_buffer;	
 }
 
 int adau_read(const struct backend_ops *backend, unsigned int addr, unsigned int len, uint8_t *data)
 {
 	int ret;
+	char log_buffer[256];
+	char *log = log_buffer;
 
-	printf("adau_read addr: 0x%04X len: 0x%04X ", addr, len);
+	log += sprintf(log, "adau_read addr: 0x%04X len: 0x%04X ", addr, len);
 
 	if ((ret = backend->read(addr, len, data)) < 0) {
-		printf(" failed (%s)\n", strerror(errno));
+		log += sprintf(log, " failed (%s)", strerror(errno));
+		LOG_ERROR("%s", log_buffer);
 	}
 	else {
-		printf(" data:");
-		print_data(len, data);
-		printf("\n");
+		log += sprintf(log, " data:");
+		log += format_data(len, data, log);
+		LOG_INFO("%s", log_buffer);
 	}
+	
 	return ret;
 }
 
 int adau_write(const struct backend_ops *backend, unsigned int addr, unsigned int len, const uint8_t *data)
 {
 	int ret;
+	char log_buffer[256];
+	char *log = log_buffer;
 
-	printf("adau_write addr: 0x%04X len: 0x%04X data:", addr, len);
-	print_data(len, data);
+	log += sprintf(log, "adau_write addr: 0x%04X len: 0x%04X data:", addr, len);
+	log += format_data(len, data, log);
 
 	if ((ret = backend->write(addr, len, data)) < 0)
-		printf(" failed (%s)\n", strerror(errno));
-	else
-		printf("\n");
+	{
+		log += sprintf(log, " failed (%s)", strerror(errno));
+		LOG_ERROR("%s", log_buffer);
+	}
 
 	return ret;
 }

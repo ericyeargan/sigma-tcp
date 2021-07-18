@@ -1,0 +1,1 @@
+idf_component_register(SRCS "adau.c" "sigma_tcp_server.c" INCLUDE_DIRS "." )
