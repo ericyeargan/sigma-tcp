@@ -1,6 +1,7 @@
-#pragma once
+#include "sigma_tcp/debug.h"
 
-#include "adau.h"
+#include <string.h>
+
 #include "logging.h"
 
 static uint8_t debug_data[256];
