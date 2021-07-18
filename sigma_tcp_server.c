@@ -14,52 +14,10 @@
 #include <fcntl.h>
 #include <stdbool.h>
 
-#include "adau.h"
 #include "logging.h"
 
 #include <netinet/in.h>
 #include <net/if.h>
-
-
-static uint8_t debug_data[256];
-
-static int debug_read(unsigned int addr, unsigned int len, uint8_t *data)
-{
-	if (addr < 0x4000 || addr + len > 0x4100) {
-		memset(data, 0x00, len);
-		return 0;
-	}
-
-    LOG_INFO("read: %.2x %d", addr, len);
-
-	addr -= 0x4000;
-	memcpy(data, debug_data + addr, len);
-
-	return 0;
-}
-
-static int debug_write(unsigned int addr, unsigned int len, const uint8_t *data)
-{
-	if (addr < 0x4000 || addr + len > 0x4100)
-		return 0;
-
-	LOG_INFO("write: %.2x %d", addr, len);
-
-	addr -= 0x4000;
-	memcpy(debug_data + addr, data, len);
-
-	return 0;
-}
-
-extern const struct backend_ops i2c_backend_ops;
-extern const struct backend_ops regmap_backend_ops;
-
-static const struct backend_ops debug_backend_ops = {
-	.read = debug_read,
-	.write = debug_write,
-};
-
-static const struct backend_ops *backend_ops = &debug_backend_ops;
 
 static void *get_in_addr(struct sockaddr *sa)
 {
@@ -77,7 +35,7 @@ static void *get_in_addr(struct sockaddr *sa)
 #define READ_REQUEST_HEADER_LEN	8
 #define WRITE_REQUEST_HEADER_LEN 10
 
-static void handle_connection(int fd)
+static void handle_connection(int fd, struct backend_ops const *backend_ops)
 {
 	uint8_t *buf;
 	size_t buf_size;
@@ -180,7 +138,7 @@ exit:
 
 #define PORT 8086
 
-int sigma_tcp_server_listen()
+int sigma_tcp_server_listen(struct backend_ops const *backend)
 {
     int sockfd, new_fd;
 	struct sockaddr_storage their_addr;
@@ -235,7 +193,7 @@ int sigma_tcp_server_listen()
             s, sizeof s);
 
         LOG_INFO("New connection from %s", s);
-		handle_connection(new_fd);
+		handle_connection(new_fd, backend);
         close(new_fd);
         LOG_INFO("Connection closed");
     }

@@ -1,3 +1,5 @@
 #pragma once
 
-int sigma_tcp_server_listen();
+#include "adau.h"
+
+int sigma_tcp_server_listen(struct backend_ops const *backend);
