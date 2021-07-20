@@ -43,10 +43,12 @@ static void handle_connection(int fd, struct backend_ops const *backend_ops)
 	uint16_t packet_len;
 	unsigned int len;
 	unsigned int addr;
-	/* uint8_t ic_num; */
+	uint8_t ic_num;
 	int count, ret;
 	char command;
 	
+	(void)ic_num;
+
 	count = 0;
 
 	buf_size = 256;
@@ -57,7 +59,7 @@ static void handle_connection(int fd, struct backend_ops const *backend_ops)
 	p = buf;
 
 	while (1) {
-		memmove(buf, p, count);
+		memmove(buf, p, count);  // discard processed packet data
 		p = buf + count;
 
 		ret = read(fd, p, buf_size - count);
@@ -73,7 +75,7 @@ static void handle_connection(int fd, struct backend_ops const *backend_ops)
 			command = p[0];
 			if (command == COMMAND_READ_REQUEST) {
 				packet_len = (p[1] << 8) | p[2];
-				/* ic_num = p[3]; */
+				ic_num = p[3];
 				len = (p[4] << 8) | p[5];
 				addr = (p[6] << 8) | p[7];
 
@@ -83,7 +85,7 @@ static void handle_connection(int fd, struct backend_ops const *backend_ops)
 			    /* LOG_INFO("received read command (0x%02X) packet_len: %i, IC: %X len: %i addr: 0x%04X", command, packet_len, ic_num, len, addr); */
 
 				if ((ret = adau_read(backend_ops, addr, len, buf + 4)) < 0) {
-					// LOG_ERROR("read returned %i (%s)", ret, strerror(errno));
+					/* LOG_ERROR("read returned %i (%s)", ret, strerror(errno)); */
 				}
 
 				buf[0] = COMMAND_READ_RESPONSE;
@@ -93,7 +95,7 @@ static void handle_connection(int fd, struct backend_ops const *backend_ops)
 				write(fd, buf, 4 + len);
 			} else if (command == COMMAND_WRITE_REQUEST) {
 				packet_len = (p[3] << 8) | p[4];
-				/* ic_num = p[5]; */
+				ic_num = p[5];
 				len = (p[6] << 8) | p[7];
 				addr = (p[8] << 8) | p[9];
 
@@ -102,11 +104,15 @@ static void handle_connection(int fd, struct backend_ops const *backend_ops)
 				/* not enough data, fetch next bytes */
 				if (count < packet_len) {
 					if (buf_size < packet_len) {
-						LOG_INFO("reallocating packet buffer with size: %i", packet_len);
-						buf_size = packet_len;
-						buf = realloc(buf, buf_size);
-						if (!buf)
+						/* LOG_INFO("reallocating packet buffer with size: %i", packet_len); */
+						uint8_t *new_buf = malloc(packet_len);
+						if (!new_buf)
 							goto exit;
+						memcpy(new_buf, p, count);
+						free(buf);
+						buf_size = packet_len;
+						buf = new_buf;
+						p = buf;
 					}
 					break;
 				}
@@ -117,7 +123,7 @@ static void handle_connection(int fd, struct backend_ops const *backend_ops)
 					count -= WRITE_REQUEST_HEADER_LEN;
 
 					if ((ret = adau_write(backend_ops, addr, len, p)) < 0) {
-						// LOG_ERROR("backend write returned %i (%s)", ret, strerror(errno));
+						/* LOG_ERROR("backend write returned %i (%s)", ret, strerror(errno)); */
 					}
 					
 					p += len;
