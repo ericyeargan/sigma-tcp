@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <error.h>
+#include <errno.h>
 #include <string.h>
 #include <stdlib.h>
 #include <sys/ioctl.h>
@@ -18,6 +19,7 @@
 #include <linux/i2c-dev.h>
 
 #include "adau.h"
+#include "logging.h"
 
 static int i2c_fd;
 static int i2c_dev_addr;
@@ -57,6 +59,7 @@ static int i2c_open(int argc, int arg_offset, char *argv[])
 
 static int i2c_read(unsigned int addr, unsigned int len, uint8_t *data)
 {
+	int ret;
 	uint8_t addr_buf[2];
 	struct i2c_msg msg[2];
 	struct i2c_rdwr_ioctl_data xfer = {
@@ -76,11 +79,17 @@ static int i2c_read(unsigned int addr, unsigned int len, uint8_t *data)
 	msg[1].buf = data;
 	msg[1].len = len;
 
-	return ioctl(i2c_fd, I2C_RDWR, &xfer);
+	if ((ret = ioctl(i2c_fd, I2C_RDWR, &xfer)) != 0)
+	{
+		LOG_ERROR("i2c_read failed (%s)", strerror(errno));
+	}
+	
+	return ret;
 }
 
 static int i2c_write(unsigned int addr, unsigned int len, const uint8_t *data)
 {
+	int ret;
 	uint8_t msg_buf[2 + len];
 	struct i2c_msg msg[1];
 	struct i2c_rdwr_ioctl_data xfer = {
@@ -97,7 +106,12 @@ static int i2c_write(unsigned int addr, unsigned int len, const uint8_t *data)
 	msg[0].buf = msg_buf;
 	msg[0].len = len + 2;
 
-	return ioctl(i2c_fd, I2C_RDWR, &xfer);
+	if ((ret = ioctl(i2c_fd, I2C_RDWR, &xfer)) != 0)
+	{
+		LOG_ERROR("i2c_read failed (%s)", strerror(errno));
+	}
+
+	return ret;
 }
 
 const struct backend_ops i2c_backend_ops = {

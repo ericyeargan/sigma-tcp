@@ -1,7 +1,6 @@
 #include "sigma_tcp/adau.h"
 
 #include <stdio.h>
-#include <errno.h>
 #include <string.h>
 #include <math.h>
 
@@ -41,7 +40,7 @@ int adau_read(const struct backend_ops *backend, unsigned int addr, unsigned int
 	log += sprintf(log, "adau_read addr: 0x%04X len: 0x%04X ", addr, len);
 
 	if ((ret = backend->read(addr, len, data)) < 0) {
-		log += sprintf(log, " failed (%s)", strerror(errno));
+		log += sprintf(log, " failed");
 		LOG_ERROR("%s", log_buffer);
 	}
 	else {
@@ -64,8 +63,11 @@ int adau_write(const struct backend_ops *backend, unsigned int addr, unsigned in
 
 	if ((ret = backend->write(addr, len, data)) < 0)
 	{
-		log += sprintf(log, " failed (%s)", strerror(errno));
+		log += sprintf(log, " failed");
 		LOG_ERROR("%s", log_buffer);
+	}
+	else {
+		LOG_INFO("%s", log_buffer);
 	}
 
 	return ret;

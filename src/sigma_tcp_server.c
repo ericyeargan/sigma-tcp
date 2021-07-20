@@ -83,7 +83,7 @@ static void handle_connection(int fd, struct backend_ops const *backend_ops)
 			    /* LOG_INFO("received read command (0x%02X) packet_len: %i, IC: %X len: %i addr: 0x%04X", command, packet_len, ic_num, len, addr); */
 
 				if ((ret = adau_read(backend_ops, addr, len, buf + 4)) < 0) {
-					LOG_ERROR("read returned %i (%s)", ret, strerror(errno));
+					// LOG_ERROR("read returned %i (%s)", ret, strerror(errno));
 				}
 
 				buf[0] = COMMAND_READ_RESPONSE;
@@ -117,7 +117,7 @@ static void handle_connection(int fd, struct backend_ops const *backend_ops)
 					count -= WRITE_REQUEST_HEADER_LEN;
 
 					if ((ret = adau_write(backend_ops, addr, len, p)) < 0) {
-						LOG_ERROR("backend read returned %i (%s)", ret, strerror(errno));
+						// LOG_ERROR("backend write returned %i (%s)", ret, strerror(errno));
 					}
 					
 					p += len;
