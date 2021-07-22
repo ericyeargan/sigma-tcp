@@ -31,9 +31,11 @@ static void *get_in_addr(struct sockaddr *sa)
 #define COMMAND_READ_RESPONSE 0x0B
 #define COMMAND_WRITE_REQUEST 0x09
 #define COMMAND_WRITE_RESPONSE 0x0B
+#define COMMAND_REG_ASAP_CONN 0x1B
 
 #define READ_REQUEST_HEADER_LEN	8
 #define WRITE_REQUEST_HEADER_LEN 10
+#define REG_ASAP_CONN_LEN 11
 
 static void handle_connection(int fd, struct backend_ops const *backend_ops)
 {
@@ -128,6 +130,19 @@ static void handle_connection(int fd, struct backend_ops const *backend_ops)
 					
 					p += len;
 					count -= len;
+				}
+			}
+			else if (command == COMMAND_REG_ASAP_CONN)
+			{
+				if (count >= REG_ASAP_CONN_LEN)
+				{
+					p += REG_ASAP_CONN_LEN;
+					count -= REG_ASAP_CONN_LEN;
+
+					if ((ret = adau_write_to_eeprom()) < 0)
+					{
+						LOG_ERROR("EEPROM write failed");
+					}
 				}
 			}
 			else {

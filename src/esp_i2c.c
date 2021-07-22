@@ -35,7 +35,7 @@ esp_err_t esp_i2c_open(int gpio_num_scl, int gpio_num_sda)
 #define ACK_CHECK_EN 0x1                        /*!< I2C master will check ack from slave*/
 #define ACK_CHECK_DIS 0x0                       /*!< I2C master will not check ack from slave */
 
-static int esp_i2c_read(unsigned int addr, unsigned int len, uint8_t *data)
+static int esp_i2c_backend_read(unsigned int addr, unsigned int len, uint8_t *data)
 {
     int ret;
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
@@ -45,16 +45,6 @@ static int esp_i2c_read(unsigned int addr, unsigned int len, uint8_t *data)
     i2c_master_write_byte(cmd, addr >> 8, ACK_CHECK_EN);
     i2c_master_write_byte(cmd, addr & 0xFF, ACK_CHECK_EN);
 
-    // i2c_master_stop(cmd);
-    // ret = i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, 1000 / portTICK_RATE_MS);
-    // i2c_cmd_link_delete(cmd);
-    // if (ret != ESP_OK)
-    // {
-    //     ESP_LOGE(TAG, "read address write returned 0x%X", ret);
-    //     return -1;
-    // }
-
-    // cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
 
     i2c_master_write_byte(cmd, ADAU_I2C_ADDR << 1 | I2C_MASTER_READ, ACK_CHECK_EN);
@@ -71,7 +61,7 @@ static int esp_i2c_read(unsigned int addr, unsigned int len, uint8_t *data)
     return 0;
 }
 
-static int esp_i2c_write(unsigned int addr, unsigned int len, const uint8_t *data)
+static int esp_i2c_backend_write(unsigned int addr, unsigned int len, const uint8_t *data)
 {
     int ret;
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
@@ -89,6 +79,34 @@ static int esp_i2c_write(unsigned int addr, unsigned int len, const uint8_t *dat
 }
 
 const struct backend_ops esp_i2c_backend_ops = {
-	.read = esp_i2c_read,
-	.write = esp_i2c_write,
+	.read = esp_i2c_backend_read,
+	.write = esp_i2c_backend_write,
 };
+
+#define EEPROM_I2C_ADDR 0x50
+
+int esp_i2c_eeprom_write(unsigned int addr, unsigned int len, uint8_t *data)
+{
+    int ret;
+
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+
+    i2c_master_write_byte(cmd, EEPROM_I2C_ADDR << 1 | I2C_MASTER_WRITE, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, addr >> 8, ACK_CHECK_DIS);
+    i2c_master_write_byte(cmd, addr & 0xFF, ACK_CHECK_DIS);
+    i2c_master_write(cmd, data, len, ACK_CHECK_EN);
+    
+    i2c_master_stop(cmd);
+    ret = i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, 1000 / portTICK_RATE_MS);
+    i2c_cmd_link_delete(cmd);
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "EEPROM I2C write returned 0x%X", ret);
+        return -1;
+    }
+
+    vTaskDelay(20 / portTICK_RATE_MS);
+
+    return 0;
+}
