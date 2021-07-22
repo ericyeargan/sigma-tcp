@@ -35,7 +35,7 @@ esp_err_t esp_i2c_open(int gpio_num_scl, int gpio_num_sda)
 #define ACK_CHECK_EN 0x1                        /*!< I2C master will check ack from slave*/
 #define ACK_CHECK_DIS 0x0                       /*!< I2C master will not check ack from slave */
 
-static int esp_i2c_backend_read(unsigned int addr, unsigned int len, uint8_t *data)
+int esp_i2c_backend_read(unsigned int addr, unsigned int len, uint8_t *data)
 {
     int ret;
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
@@ -61,7 +61,7 @@ static int esp_i2c_backend_read(unsigned int addr, unsigned int len, uint8_t *da
     return 0;
 }
 
-static int esp_i2c_backend_write(unsigned int addr, unsigned int len, const uint8_t *data)
+int esp_i2c_backend_write(unsigned int addr, unsigned int len, const uint8_t *data)
 {
     int ret;
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
