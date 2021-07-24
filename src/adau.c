@@ -182,7 +182,7 @@ int adau_read_float(const struct backend_ops *backend, unsigned int addr, float 
 {
 	int ret;
 	uint8_t data[4];
-	if ((ret = backend->read(addr, sizeof(data), data)) < 0)
+	if ((ret = adau_read(backend, addr, sizeof(data), data)) < 0)
 		return ret;
 	int32_t int_value = data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3];
 	*value = adi_5_23_to_float(int_value);
@@ -197,7 +197,7 @@ int adau_write_float(const struct backend_ops *backend, unsigned int addr, float
 	data[1] = (value_5_23 >> 16) & 0xFF;
 	data[2] = (value_5_23 >> 8) & 0xFF;
 	data[3] = value_5_23 & 0xFF;
-	return backend->write(addr, sizeof(data), data);
+	return adau_write(backend, addr, sizeof(data), data);
 }
 
 #define EEPROM_PAGE_SIZE	32
