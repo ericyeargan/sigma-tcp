@@ -4,7 +4,7 @@
 #include "driver/i2c.h"
 
 #define I2C_MASTER_NUM I2C_NUM_0                              /*!< I2C port number for master dev */
-#define I2C_MASTER_FREQ_HZ 100000                             /*!< I2C master clock frequency */
+#define I2C_MASTER_FREQ_HZ 400000                             /*!< I2C master clock frequency */
 #define I2C_MASTER_TX_BUF_DISABLE 0                           /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_RX_BUF_DISABLE 0                           /*!< I2C master doesn't need buffer */
 
@@ -23,7 +23,7 @@ esp_err_t esp_i2c_open(int gpio_num_scl, int gpio_num_sda)
         .scl_io_num = gpio_num_scl,
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
         .master.clk_speed = I2C_MASTER_FREQ_HZ,
-        // .clk_flags = 0,          /*!< Optional, you can use I2C_SCLK_SRC_FLAG_* flags to choose i2c source clock here. */
+        .clk_flags = I2C_SCLK_SRC_FLAG_FOR_NOMAL,      /*!< Optional, you can use I2C_SCLK_SRC_FLAG_* flags to choose i2c source clock here. */
     };
     
     if ((ret = i2c_param_config(I2C_MASTER_NUM, &conf)) != ESP_OK) {
@@ -37,35 +37,66 @@ esp_err_t esp_i2c_open(int gpio_num_scl, int gpio_num_sda)
 
 #define ACK_CHECK_EN 0x1                        /*!< I2C master will check ack from slave*/
 #define ACK_CHECK_DIS 0x0                       /*!< I2C master will not check ack from slave */
+ 
+/* From a later version of esp-idf's I2C driver (i2c.c) */
+static esp_err_t i2c_master_write_read_device(i2c_port_t i2c_num, uint8_t device_address,
+                                       const uint8_t* write_buffer, size_t write_size,
+                                       uint8_t* read_buffer, size_t read_size,
+                                       TickType_t ticks_to_wait)
+{
+    esp_err_t err = ESP_OK;
+    i2c_cmd_handle_t handle = i2c_cmd_link_create();
+    assert (handle != NULL);
+
+    err = i2c_master_start(handle);
+    if (err != ESP_OK) {
+        goto end;
+    }
+
+    err = i2c_master_write_byte(handle, device_address << 1 | I2C_MASTER_WRITE, true);
+    if (err != ESP_OK) {
+        goto end;
+    }
+
+    err = i2c_master_write(handle, write_buffer, write_size, true);
+    if (err != ESP_OK) {
+        goto end;
+    }
+
+    err = i2c_master_start(handle);
+    if (err != ESP_OK) {
+        goto end;
+    }
+
+    err = i2c_master_write_byte(handle, device_address << 1 | I2C_MASTER_READ, true);
+    if (err != ESP_OK) {
+        goto end;
+    }
+
+    err = i2c_master_read(handle, read_buffer, read_size, I2C_MASTER_LAST_NACK);
+    if (err != ESP_OK) {
+        goto end;
+    }
+
+    i2c_master_stop(handle);
+    err = i2c_master_cmd_begin(i2c_num, handle, ticks_to_wait);
+
+end:
+    i2c_cmd_link_delete(handle);
+    return err;
+}
 
 int esp_i2c_backend_read(unsigned int addr, unsigned int len, uint8_t *data)
 {
     int ret;
 
-    if ((ret = i2c_set_timeout(I2C_MASTER_NUM, 400000)) != ESP_OK) {
-        return -1;
-    }
-
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    ESP_ERROR_CHECK(i2c_master_start(cmd));
-
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, ADAU_I2C_ADDR << 1 | I2C_MASTER_WRITE, ACK_CHECK_EN));
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, addr >> 8, ACK_CHECK_EN));
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, addr & 0xFF, ACK_CHECK_EN));
-
-    ESP_ERROR_CHECK(i2c_master_start(cmd));
-
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, ADAU_I2C_ADDR << 1 | I2C_MASTER_READ, ACK_CHECK_EN));
-    ESP_ERROR_CHECK(i2c_master_read(cmd, data, len, I2C_MASTER_ACK));
-
-    ESP_ERROR_CHECK(i2c_master_stop(cmd));
-    ret = i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK)
+    uint8_t write_buffer[] = {addr >> 8, addr & 0xFF};
+    if ((ret = i2c_master_write_read_device(I2C_MASTER_NUM, ADAU_I2C_ADDR, write_buffer, sizeof(write_buffer), data, len, 1000 / portTICK_RATE_MS)))
     {
-        ESP_LOGE(TAG, "payload read returned 0x%X", ret);
+        ESP_LOGE(TAG, "i2c_master_write_read_device returned 0x%X", ret);
         return -1;
     }
+
     return 0;
 }
 
