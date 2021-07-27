@@ -159,7 +159,8 @@ int adau_write(const struct backend_ops *backend, unsigned int addr, unsigned in
 #define ADI_5_23_MAX_VALUE 16
 #define ADI_5_23_MIN_VALUE -16
 
-#define ADI_5_23_FULL_SCALE_INT	8388608
+#define ADI_5_23_FULL_SCALE_INT	0x800000
+#define ADI_5_19_FULL_SCALE_INT 0x080000 // 524288
 
 static int32_t float_to_5_23(float value)
 {
@@ -176,6 +177,11 @@ static float adi_5_23_to_float(int32_t value)
 	return (float)value / ADI_5_23_FULL_SCALE_INT;
 }
 
+static float adi_5_19_to_float(int32_t value)
+{
+	return (float)value / ADI_5_19_FULL_SCALE_INT;
+}
+
 #define PARAMETER_RAM_END_ADDR 	1024
 
 int adau_read_float(const struct backend_ops *backend, unsigned int addr, float *value)
@@ -186,6 +192,24 @@ int adau_read_float(const struct backend_ops *backend, unsigned int addr, float 
 		return ret;
 	int32_t int_value = data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3];
 	*value = adi_5_23_to_float(int_value);
+	return 0;
+}
+
+int adau_readback_float(const struct backend_ops *backend, unsigned int capture_addr, unsigned int capture_addr_val, float *value)
+{
+	int ret;
+	uint8_t write_buf[2] = {capture_addr_val >> 8, capture_addr_val};
+	uint8_t data[3];
+	int32_t int_value;
+
+	if ((ret = adau_write(backend, capture_addr, sizeof(write_buf), write_buf)) < 0)
+		return ret;
+	if ((ret = adau_read(backend, capture_addr, sizeof(data), data)))
+		return ret;
+
+	int_value = data[0] << 16 | data[1] << 8 | data[2];
+	*value = adi_5_19_to_float(int_value);
+
 	return 0;
 }
 
