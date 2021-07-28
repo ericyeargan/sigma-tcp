@@ -16,6 +16,8 @@ int adau_write_float(const struct backend_ops *backend, unsigned int addr, float
 
 int adau_readback_float(const struct backend_ops *backend, unsigned int capture_addr, unsigned int capture_addr_val, float *value);
 
+#ifdef SIGMA_TCP_EEPROM_PROGRAM
 int adau_write_to_eeprom();
+#endif
 
 #endif

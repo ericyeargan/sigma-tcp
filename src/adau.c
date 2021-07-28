@@ -48,11 +48,13 @@ int adau_read(const struct backend_ops *backend, unsigned int addr, unsigned int
 	else {
 		log += sprintf(log, " data:");
 		log += format_data(len, data, log);
-		LOG_INFO("%s", log_buffer);
+		LOG_DEBUG("%s", log_buffer);
 	}
 	
 	return ret;
 }
+
+#ifdef SIGMA_TCP_EEPROM_PROGRAM
 
 #define PROGRAM_BASE_ADDRESS 0x0400
 #define PROGRAM_WORDS 1024
@@ -89,139 +91,6 @@ static size_t parameter_buffer_offset(unsigned int addr)
 {
 	size_t parameter_offset = addr - PARAMETER_BASE_ADDRESS;
 	return parameter_offset * PARAMETER_WORD_LENGTH;
-}
-
-int adau_write(const struct backend_ops *backend, unsigned int addr, unsigned int len, const uint8_t *data)
-{
-	int ret;
-	char log_buffer[256];
-	char *log = log_buffer;
-
-	log += sprintf(log, "adau_write addr: 0x%04X len: 0x%04X data:", addr, len);
-	log += format_data(len, data, log);
-
-	if (addr < PARAMETER_TOP_ADDRESS)
-	{
-		size_t parameter_data_len = len;
-		size_t buffer_offset = parameter_buffer_offset(addr);
-		LOG_INFO("copying parameter data to parameter buffer ofset 0x%04X", buffer_offset);
-		if (buffer_offset + parameter_data_len > PARAMETER_BYTES)
-		{
-			parameter_data_len = PARAMETER_BYTES - buffer_offset;
-			LOG_ERROR("data exceed parameter buffer - resizing to %i bytes", parameter_data_len);
-		}
-		memcpy(parameter_buffer + buffer_offset, data, parameter_data_len);
-		parameter_length = buffer_offset + parameter_data_len;
-	}
-	else if (addr >= PROGRAM_BASE_ADDRESS && addr < PROGRAM_TOP_ADDRESS)
-	{
-		size_t program_data_len = len;
-		size_t buffer_offset = program_buffer_offset(addr);  
-		LOG_INFO("copying program data to program buffer ofset 0x%04X", buffer_offset);
-		if (buffer_offset + program_data_len > PROGRAM_BYTES)
-		{
-			program_data_len = PROGRAM_BYTES - buffer_offset;
-			LOG_ERROR("data exceeds program buffer - resizing to %i bytes", program_data_len);
-		}
-		memcpy(program_buffer + buffer_offset, data, program_data_len);
-		program_length = buffer_offset + program_data_len;
-	}
-	else if (addr == CONTROL_REG_BASE_ADDRESS)
-	{
-		if (len == CONTROL_REG_BYTES)
-		{
-			LOG_INFO("copying control register data to buffer");
-			memcpy(control_reg_buffer, data, len);
-			control_reg_length = len;
-		}
-		else if (len != 2)
-		{
-			LOG_ERROR("unexpected control register data length: %i", len);
-		}
-	}
-	else
-	{
-		LOG_ERROR("unexpected data");
-	}
-
-	if ((ret = backend->write(addr, len, data)) < 0)
-	{
-		log += sprintf(log, " failed");
-		LOG_ERROR("%s", log_buffer);
-	}
-	else {
-		LOG_INFO("%s", log_buffer);
-	}
-
-	return ret;
-}
-
-#define ADI_5_23_MAX_VALUE 16
-#define ADI_5_23_MIN_VALUE -16
-
-#define ADI_5_23_FULL_SCALE_INT	0x800000
-#define ADI_5_19_FULL_SCALE_INT 0x080000 // 524288
-
-static int32_t float_to_5_23(float value)
-{
-	if (value > ADI_5_23_MAX_VALUE)
-		value = ADI_5_23_MAX_VALUE;
-	else if (value < ADI_5_23_MIN_VALUE)
-		value = ADI_5_23_MIN_VALUE;
-
-	return (int32_t)(value * ADI_5_23_FULL_SCALE_INT);
-}
-
-static float adi_5_23_to_float(int32_t value)
-{
-	return (float)value / ADI_5_23_FULL_SCALE_INT;
-}
-
-static float adi_5_19_to_float(int32_t value)
-{
-	return (float)value / ADI_5_19_FULL_SCALE_INT;
-}
-
-#define PARAMETER_RAM_END_ADDR 	1024
-
-int adau_read_float(const struct backend_ops *backend, unsigned int addr, float *value)
-{
-	int ret;
-	uint8_t data[4];
-	if ((ret = adau_read(backend, addr, sizeof(data), data)) < 0)
-		return ret;
-	int32_t int_value = data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3];
-	*value = adi_5_23_to_float(int_value);
-	return 0;
-}
-
-int adau_readback_float(const struct backend_ops *backend, unsigned int capture_addr, unsigned int capture_addr_val, float *value)
-{
-	int ret;
-	uint8_t write_buf[2] = {capture_addr_val >> 8, capture_addr_val};
-	uint8_t data[3];
-	int32_t int_value;
-
-	if ((ret = adau_write(backend, capture_addr, sizeof(write_buf), write_buf)) < 0)
-		return ret;
-	if ((ret = adau_read(backend, capture_addr, sizeof(data), data)))
-		return ret;
-
-	int_value = data[0] << 16 | data[1] << 8 | data[2];
-	*value = adi_5_19_to_float(int_value);
-
-	return 0;
-}
-
-int adau_write_float(const struct backend_ops *backend, unsigned int addr, float value)
-{
-	uint8_t data[4];
-	int32_t value_5_23 = float_to_5_23(value);
-	data[0] = (value_5_23 >> 24) & 0xFF;
-	data[1] = (value_5_23 >> 16) & 0xFF;
-	data[2] = (value_5_23 >> 8) & 0xFF;
-	data[3] = value_5_23 & 0xFF;
-	return adau_write(backend, addr, sizeof(data), data);
 }
 
 #define EEPROM_PAGE_SIZE	32
@@ -359,4 +228,141 @@ int adau_write_to_eeprom()
 		return ret;
 
 	return 0;
+}
+
+#endif /* SIGMA_TCP_EEPROM_PROGRAM */
+
+int adau_write(const struct backend_ops *backend, unsigned int addr, unsigned int len, const uint8_t *data)
+{
+	int ret;
+	char log_buffer[256];
+	char *log = log_buffer;
+
+	log += sprintf(log, "adau_write addr: 0x%04X len: 0x%04X data:", addr, len);
+	log += format_data(len, data, log);
+
+#ifdef SIGMA_TCP_EEPROM_PROGRAM
+	if (addr < PARAMETER_TOP_ADDRESS)
+	{
+		size_t parameter_data_len = len;
+		size_t buffer_offset = parameter_buffer_offset(addr);
+		LOG_INFO("copying parameter data to parameter buffer ofset 0x%04X", buffer_offset);
+		if (buffer_offset + parameter_data_len > PARAMETER_BYTES)
+		{
+			parameter_data_len = PARAMETER_BYTES - buffer_offset;
+			LOG_ERROR("data exceed parameter buffer - resizing to %i bytes", parameter_data_len);
+		}
+		memcpy(parameter_buffer + buffer_offset, data, parameter_data_len);
+		parameter_length = buffer_offset + parameter_data_len;
+	}
+	else if (addr >= PROGRAM_BASE_ADDRESS && addr < PROGRAM_TOP_ADDRESS)
+	{
+		size_t program_data_len = len;
+		size_t buffer_offset = program_buffer_offset(addr);  
+		LOG_INFO("copying program data to program buffer ofset 0x%04X", buffer_offset);
+		if (buffer_offset + program_data_len > PROGRAM_BYTES)
+		{
+			program_data_len = PROGRAM_BYTES - buffer_offset;
+			LOG_ERROR("data exceeds program buffer - resizing to %i bytes", program_data_len);
+		}
+		memcpy(program_buffer + buffer_offset, data, program_data_len);
+		program_length = buffer_offset + program_data_len;
+	}
+	else if (addr == CONTROL_REG_BASE_ADDRESS)
+	{
+		if (len == CONTROL_REG_BYTES)
+		{
+			LOG_INFO("copying control register data to buffer");
+			memcpy(control_reg_buffer, data, len);
+			control_reg_length = len;
+		}
+		else if (len != 2)
+		{
+			LOG_ERROR("unexpected control register data length: %i", len);
+		}
+	}
+	else
+	{
+		LOG_ERROR("unexpected data");
+	}
+#endif /* SIGMA_TCP_EEPROM_PROGRAM */
+
+	if ((ret = backend->write(addr, len, data)) < 0)
+	{
+		log += sprintf(log, " failed");
+		LOG_ERROR("%s", log_buffer);
+	}
+	else {
+		LOG_INFO("%s", log_buffer);
+	}
+
+	return ret;
+}
+
+#define ADI_5_23_MAX_VALUE 16
+#define ADI_5_23_MIN_VALUE -16
+
+#define ADI_5_23_FULL_SCALE_INT	0x800000
+#define ADI_5_19_FULL_SCALE_INT 0x080000 // 524288
+
+static int32_t float_to_5_23(float value)
+{
+	if (value > ADI_5_23_MAX_VALUE)
+		value = ADI_5_23_MAX_VALUE;
+	else if (value < ADI_5_23_MIN_VALUE)
+		value = ADI_5_23_MIN_VALUE;
+
+	return (int32_t)(value * ADI_5_23_FULL_SCALE_INT);
+}
+
+static float adi_5_23_to_float(int32_t value)
+{
+	return (float)value / ADI_5_23_FULL_SCALE_INT;
+}
+
+static float adi_5_19_to_float(int32_t value)
+{
+	return (float)value / ADI_5_19_FULL_SCALE_INT;
+}
+
+#define PARAMETER_RAM_END_ADDR 	1024
+
+int adau_read_float(const struct backend_ops *backend, unsigned int addr, float *value)
+{
+	int ret;
+	uint8_t data[4];
+	if ((ret = adau_read(backend, addr, sizeof(data), data)) < 0)
+		return ret;
+	int32_t int_value = data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3];
+	*value = adi_5_23_to_float(int_value);
+	return 0;
+}
+
+int adau_readback_float(const struct backend_ops *backend, unsigned int capture_addr, unsigned int capture_addr_val, float *value)
+{
+	int ret;
+	uint8_t write_buf[2] = {capture_addr_val >> 8, capture_addr_val};
+	uint8_t data[3];
+	int32_t int_value;
+
+	if ((ret = adau_write(backend, capture_addr, sizeof(write_buf), write_buf)) < 0)
+		return ret;
+	if ((ret = adau_read(backend, capture_addr, sizeof(data), data)))
+		return ret;
+
+	int_value = data[0] << 16 | data[1] << 8 | data[2];
+	*value = adi_5_19_to_float(int_value);
+
+	return 0;
+}
+
+int adau_write_float(const struct backend_ops *backend, unsigned int addr, float value)
+{
+	uint8_t data[4];
+	int32_t value_5_23 = float_to_5_23(value);
+	data[0] = (value_5_23 >> 24) & 0xFF;
+	data[1] = (value_5_23 >> 16) & 0xFF;
+	data[2] = (value_5_23 >> 8) & 0xFF;
+	data[3] = value_5_23 & 0xFF;
+	return adau_write(backend, addr, sizeof(data), data);
 }

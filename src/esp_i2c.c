@@ -1,5 +1,8 @@
 #include "sigma_tcp/adau.h"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
 #include "esp_log.h"
 #include "driver/i2c.h"
 
@@ -10,11 +13,16 @@
 
 #define TAG "esp_i2c"
 
+static SemaphoreHandle_t g_i2c_mutex;
+
 esp_err_t esp_i2c_open(int gpio_num_scl, int gpio_num_sda)
 {
     esp_err_t ret;
 
     ESP_LOGI(TAG, "esp_i2c_open scl: %i, sda: %i", gpio_num_scl, gpio_num_sda);
+
+    g_i2c_mutex = xSemaphoreCreateMutex();
+    assert(g_i2c_mutex != NULL);
 
     i2c_config_t conf = {
         .mode = I2C_MODE_MASTER,
@@ -79,9 +87,13 @@ static esp_err_t i2c_master_write_read_device(i2c_port_t i2c_num, uint8_t device
     }
 
     i2c_master_stop(handle);
+
+    xSemaphoreTake(g_i2c_mutex, portMAX_DELAY);
+
     err = i2c_master_cmd_begin(i2c_num, handle, ticks_to_wait);
 
 end:
+    xSemaphoreGive(g_i2c_mutex);
     i2c_cmd_link_delete(handle);
     return err;
 }
@@ -112,8 +124,14 @@ int esp_i2c_backend_write(unsigned int addr, unsigned int len, const uint8_t *da
     i2c_master_write(cmd, data, len, ACK_CHECK_EN);
     
     i2c_master_stop(cmd);
+
+    xSemaphoreTake(g_i2c_mutex, portMAX_DELAY);
+
     ret = i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, 1000 / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
+
+    xSemaphoreGive(g_i2c_mutex);
+
     return ret != ESP_OK ? -1 : 0;
 }
 
@@ -121,6 +139,8 @@ const struct backend_ops esp_i2c_backend_ops = {
 	.read = esp_i2c_backend_read,
 	.write = esp_i2c_backend_write,
 };
+
+#ifdef SIGMA_TCP_EEPROM_PROGRAM
 
 #define EEPROM_I2C_ADDR 0x50
 
@@ -149,3 +169,5 @@ int esp_i2c_eeprom_write(unsigned int addr, unsigned int len, uint8_t *data)
 
     return 0;
 }
+
+#endif /* SIGMA_TCP_EEPROM_PROGRAM */

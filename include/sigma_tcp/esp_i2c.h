@@ -10,6 +10,8 @@ int esp_i2c_backend_read(unsigned int addr, unsigned int len, uint8_t *data);
 
 int esp_i2c_backend_write(unsigned int addr, unsigned int len, const uint8_t *data);
 
+#ifdef SIGMA_TCP_EEPROM_PROGRAM
 int esp_i2c_eeprom_write(unsigned int addr, unsigned int len, uint8_t *data);
+#endif
 
 extern const struct backend_ops esp_i2c_backend_ops;

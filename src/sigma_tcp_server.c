@@ -132,6 +132,7 @@ static void handle_connection(int fd, struct backend_ops const *backend_ops)
 					count -= len;
 				}
 			}
+#ifdef SIGMA_TCP_EEPROM_PROGRAM
 			else if (command == COMMAND_REG_ASAP_CONN)
 			{
 				if (count >= REG_ASAP_CONN_LEN)
@@ -145,6 +146,7 @@ static void handle_connection(int fd, struct backend_ops const *backend_ops)
 					}
 				}
 			}
+#endif /* SIGMA_TCP_EEPROM_PROGRAM */
 			else {
 				LOG_ERROR("unrecognized command: 0x%02X", command);
                 goto exit;

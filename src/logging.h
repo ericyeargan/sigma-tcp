@@ -10,7 +10,9 @@
 #define TAG "sigma_tcp"
 #define LOG_INFO(...)   ESP_LOGI(TAG, __VA_ARGS__)
 #define LOG_ERROR(...)  ESP_LOGE(TAG, __VA_ARGS__)
+#define LOG_DEBUG(...)  ESP_LOGD(TAG, __VA_ARGS__)
 #else
 #define LOG_INFO(...)   printf(__VA_ARGS__); printf("\n");
 #define LOG_ERROR(...)  fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n");
+#define LOG_DEBUG(...) 
 #endif //ESP_PLATFORM
