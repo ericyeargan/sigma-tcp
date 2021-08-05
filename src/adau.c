@@ -293,7 +293,7 @@ int adau_write(const struct backend_ops *backend, unsigned int addr, unsigned in
 		LOG_ERROR("%s", log_buffer);
 	}
 	else {
-		LOG_INFO("%s", log_buffer);
+		LOG_DEBUG("%s", log_buffer);
 	}
 
 	return ret;
