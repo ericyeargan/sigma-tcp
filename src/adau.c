@@ -54,13 +54,13 @@ int adau_read(const struct backend_ops *backend, unsigned int addr, unsigned int
 	return ret;
 }
 
-#ifdef SIGMA_TCP_EEPROM_PROGRAM
-
 #define PROGRAM_BASE_ADDRESS 0x0400
 #define PROGRAM_WORDS 1024
 #define PROGRAM_TOP_ADDRESS (PROGRAM_BASE_ADDRESS + PROGRAM_WORDS)
 #define PROGRAM_WORD_LENGTH	5
 #define PROGRAM_BYTES (PROGRAM_WORDS * PROGRAM_WORD_LENGTH)
+
+#ifdef SIGMA_TCP_EEPROM_PROGRAM
 
 #define PARAMETER_BASE_ADDRESS 0x0000
 #define PARAMETER_WORDS 1024
@@ -237,8 +237,17 @@ int adau_write(const struct backend_ops *backend, unsigned int addr, unsigned in
 	int ret;
 	char log_buffer[256];
 	char *log = log_buffer;
+	int program_data = 0;
 
-	log += sprintf(log, "adau_write addr: 0x%04X len: 0x%04X data:", addr, len);
+	log += sprintf(log, "adau_write ");
+
+	if (addr >= PROGRAM_BASE_ADDRESS && addr < PROGRAM_TOP_ADDRESS)
+	{
+		program_data = 1;
+		log += sprintf(log, "program ");
+	}
+
+	log += sprintf(log, "addr: 0x%04X len: 0x%04X data:", addr, len);
 	log += format_data(len, data, log);
 
 #ifdef SIGMA_TCP_EEPROM_PROGRAM
@@ -255,7 +264,7 @@ int adau_write(const struct backend_ops *backend, unsigned int addr, unsigned in
 		memcpy(parameter_buffer + buffer_offset, data, parameter_data_len);
 		parameter_length = buffer_offset + parameter_data_len;
 	}
-	else if (addr >= PROGRAM_BASE_ADDRESS && addr < PROGRAM_TOP_ADDRESS)
+	else if (program_data)
 	{
 		size_t program_data_len = len;
 		size_t buffer_offset = program_buffer_offset(addr);  
@@ -293,7 +302,14 @@ int adau_write(const struct backend_ops *backend, unsigned int addr, unsigned in
 		LOG_ERROR("%s", log_buffer);
 	}
 	else {
-		LOG_DEBUG("%s", log_buffer);
+		if (program_data)
+		{
+			LOG_INFO("%s", log_buffer);
+		}
+		else
+		{
+			LOG_DEBUG("%s", log_buffer);
+		}
 	}
 
 	return ret;
