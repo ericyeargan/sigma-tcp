@@ -343,13 +343,32 @@ static float adi_5_19_to_float(int32_t value)
 
 #define PARAMETER_RAM_END_ADDR 	1024
 
-int adau_read_float(const struct backend_ops *backend, unsigned int addr, float *value)
+int adau_read_int(const struct backend_ops *backend, unsigned int addr, int *value)
 {
 	int ret;
 	uint8_t data[4];
 	if ((ret = adau_read(backend, addr, sizeof(data), data)) < 0)
 		return ret;
-	int32_t int_value = data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3];
+	*value = data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3];
+	return 0;
+}
+
+int adau_write_int(const struct backend_ops *backend, unsigned int addr, int value)
+{
+	uint8_t data[4];
+	data[0] = (value >> 24) & 0xFF;
+	data[1] = (value >> 16) & 0xFF;
+	data[2] = (value >> 8) & 0xFF;
+	data[3] = value & 0xFF;
+	return adau_write(backend, addr, sizeof(data), data);
+}
+
+int adau_read_float(const struct backend_ops *backend, unsigned int addr, float *value)
+{
+	int ret;
+	int32_t int_value;
+	if ((ret = adau_read_int(backend, addr, &int_value)) < 0)
+		return ret;
 	*value = adi_5_23_to_float(int_value);
 	return 0;
 }
@@ -374,11 +393,6 @@ int adau_readback_float(const struct backend_ops *backend, unsigned int capture_
 
 int adau_write_float(const struct backend_ops *backend, unsigned int addr, float value)
 {
-	uint8_t data[4];
 	int32_t value_5_23 = float_to_5_23(value);
-	data[0] = (value_5_23 >> 24) & 0xFF;
-	data[1] = (value_5_23 >> 16) & 0xFF;
-	data[2] = (value_5_23 >> 8) & 0xFF;
-	data[3] = value_5_23 & 0xFF;
-	return adau_write(backend, addr, sizeof(data), data);
+	return adau_write_int(backend, addr, value_5_23);
 }
