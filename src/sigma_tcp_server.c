@@ -48,6 +48,7 @@ static void handle_connection(int fd, struct backend_ops const *backend_ops)
 	uint8_t ic_num;
 	int count, ret;
 	char command;
+	char safeload;
 	
 	(void)ic_num;
 
@@ -96,12 +97,13 @@ static void handle_connection(int fd, struct backend_ops const *backend_ops)
 				buf[3] = ret;
 				write(fd, buf, 4 + len);
 			} else if (command == COMMAND_WRITE_REQUEST) {
+				safeload = p[1];
 				packet_len = (p[3] << 8) | p[4];
 				ic_num = p[5];
 				len = (p[6] << 8) | p[7];
 				addr = (p[8] << 8) | p[9];
 
-				/* LOG_INFO("processing write command (0x%02X) IC: %X packet_len: %i received %i", command, ic_num, packet_len, count); */
+				LOG_INFO("processing write command (0x%02X) safeload: %i, IC: %X packet_len: %i received %i", command, safeload, ic_num, packet_len, count);
 
 				/* not enough data, fetch next bytes */
 				if (count < packet_len) {
@@ -124,8 +126,14 @@ static void handle_connection(int fd, struct backend_ops const *backend_ops)
 					p += WRITE_REQUEST_HEADER_LEN;
 					count -= WRITE_REQUEST_HEADER_LEN;
 
-					if ((ret = adau_write(backend_ops, addr, len, p)) < 0) {
-						/* LOG_ERROR("backend write returned %i (%s)", ret, strerror(errno)); */
+					if (safeload == 0) {
+						if ((ret = adau_write(backend_ops, addr, len, p)) < 0) {
+							/* LOG_ERROR("backend write returned %i (%s)", ret, strerror(errno)); */
+						}
+					} else {
+						if ((ret = adau_safeload(backend_ops, addr, len, p)) < 0) {
+							/* LOG_ERROR("backend safeload returned %i (%s)", ret, strerror(errno)); */
+						}
 					}
 					
 					p += len;

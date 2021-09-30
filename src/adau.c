@@ -1,5 +1,6 @@
 #include "sigma_tcp/adau.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -302,23 +303,164 @@ int adau_write(const struct backend_ops *backend, unsigned int addr, unsigned in
 		LOG_ERROR("%s", log_buffer);
 	}
 	else {
-		if (program_data)
+		if (program_data || addr != 2074)
 		{
 			LOG_INFO("%s", log_buffer);
 		}
 		else
 		{
-			LOG_DEBUG("%s", log_buffer);
+            LOG_DEBUG("%s", log_buffer);
 		}
 	}
 
 	return ret;
 }
 
-#define ADI_5_23_MAX_VALUE 16
-#define ADI_5_23_MIN_VALUE -16
+static int adau_read_ushort(const struct backend_ops *backend, unsigned int addr, uint16_t *value)
+{
+	int ret;
+	uint8_t data[2];
+	if ((ret = adau_read(backend, addr, sizeof(data), data)) < 0)
+		return ret;
+	*value = data[0] << 8 | data[1];
+	return 0;
+}
 
-#define ADI_5_23_FULL_SCALE_INT	0x800000
+static int adau_write_ushort(const struct backend_ops *backend, unsigned int addr, uint16_t value)
+{
+	uint8_t data[2];
+	data[0] = (value >> 8) & 0xFF;
+	data[1] = value & 0xFF;
+	return adau_write(backend, addr, sizeof(data), data);
+}
+
+#define SAFELOAD_REG_COUNT 5
+#define SAFELOAD_ADDR_REGISTER_BASE_ADDR 2069 // 0x815
+#define SAFELOAD_ADDR_MASK 0x03FF // the safeload address registers seem to allow program RAM addresses (up to 0xFFF) but we restrict to parameter RAM
+#define SAFELOAD_DATA_REGISTER_BASE_ADDR 2064 // 0x810
+#define SAFELOAD_DATA_LEN 4
+
+#define CORE_REG_ADDR 0x81C
+#define CORE_REG_IST_MASK 0x20
+
+/* mute:
+I (68772) sigma_tcp: processing write command (0x09) safeload: 1, IC: 1 packet_len: 14 received 14
+I (68782) sigma_tcp: adau_write addr: 0x000B len: 0x0004 data: 0x00 0x00 0x00 0x00
+I (68812) sigma_tcp: processing write command (0x09) safeload: 1, IC: 1 packet_len: 14 received 14
+I (68822) sigma_tcp: adau_write addr: 0x000C len: 0x0004 data: 0x00 0x00 0x20 0x00
+*/
+
+/* level:
+I (154882) sigma_tcp: processing write command (0x09) safeload: 1, IC: 1 packet_len: 18 received 18
+I (154882) sigma_tcp: adau_write addr: 0x0000 len: 0x0008 data: 0x00 0x00 0x18 0xDB 0x00 0x00 0x08 0x00
+*/
+
+/* biquad coeff (20 bytes - b0 coeff at addr):
+I (228582) sigma_tcp: processing write command (0x09) safeload: 1, IC: 1 packet_len: 30 received 30
+I (228592) sigma_tcp: adau_write addr: 0x0011 len: 0x0014 data: 0x00 0x7F 0xA1 0x79 0xFF 0x01 0x45 0x69 ...
+*/
+
+int adau_safeload(const struct backend_ops *backend, unsigned int addr, const unsigned int len, const uint8_t *data)
+{
+    // https://ez.analog.com/dsp/sigmadsp/w/documents/5182/implementing-safeload-writes-on-the-adau1701
+
+	int ret;
+	uint8_t addr_buf[2];
+    uint8_t data_buf[5];
+
+    char log_buffer[256];
+    char *log = log_buffer;
+
+    if (len > SAFELOAD_REG_COUNT * SAFELOAD_DATA_LEN)
+    {
+        log += sprintf(log, " failed - length exceeds safeload capacity");
+        ret = EINVAL;
+        goto error;
+    }
+
+	if (len % SAFELOAD_DATA_LEN)
+    {
+        log += sprintf(log, " failed - length must be a multiple of 4");
+        ret = EINVAL;
+        goto error;
+    }
+
+	uint8_t load_count = len / SAFELOAD_DATA_LEN;
+
+    log += sprintf(log, "adau_safeload addr: 0x%04X len: 0x%04X count: %d data:", addr, len, load_count);
+    log += format_data(len, data, log);
+
+    unsigned int data_reg_address = SAFELOAD_DATA_REGISTER_BASE_ADDR;
+    unsigned int addr_reg_address = SAFELOAD_ADDR_REGISTER_BASE_ADDR;
+
+    for (uint8_t i = 0; i < load_count; i++)
+	{
+		if ((addr & SAFELOAD_ADDR_MASK) != addr)
+        {
+            log += sprintf(log, " failed - invalid addr");
+            ret = EINVAL;
+            goto error;
+        }
+
+        data_buf[0] = 0;
+        memcpy(data_buf + 1, data, SAFELOAD_DATA_LEN);
+
+        if ((ret = adau_write(backend, data_reg_address, sizeof(data_buf), data_buf)) != 0)
+        {
+            log += sprintf(log, " failed - data write");
+            goto error;
+        }
+
+        data += SAFELOAD_DATA_LEN;
+        data_reg_address++;
+
+		addr_buf[0] = addr >> 8;
+		addr_buf[1] = addr;
+
+        if ((ret = adau_write(backend, addr_reg_address, 2, addr_buf)) != 0)
+        {
+            log += sprintf(log, " failed - address write");
+            goto error;
+        }
+
+        addr++;
+        addr_reg_address++;
+	}
+
+	uint16_t core_reg_val;
+	if ((ret = adau_read_ushort(backend, CORE_REG_ADDR, &core_reg_val)) != 0)
+    {
+        log += sprintf(log, " failed - core reg get");
+        goto error;
+    }
+
+    if (core_reg_val & CORE_REG_IST_MASK)
+    {
+        log += sprintf(log, " failed - IST already set");
+        goto error;
+    }
+
+	core_reg_val |= CORE_REG_IST_MASK;
+	
+	if ((ret = adau_write_ushort(backend, CORE_REG_ADDR, core_reg_val)) != 0)
+    {
+        log += sprintf(log, " failed - IST set");
+        goto error;
+    }
+
+    LOG_INFO("%s", log_buffer);
+    return 0;
+
+error:
+    (void)log;
+    LOG_ERROR("%s", log_buffer);
+    return ret;
+}
+
+#define ADI_5_23_MAX_VALUE (16)
+#define ADI_5_23_MIN_VALUE (-16)
+
+#define ADI_5_23_FULL_SCALE_INT	0x800000 // 8388608
 #define ADI_5_19_FULL_SCALE_INT 0x080000 // 524288
 
 static int32_t float_to_5_23(float value)
@@ -335,7 +477,7 @@ static float adi_5_23_to_float(int32_t value)
 {
 	return (float)value / ADI_5_23_FULL_SCALE_INT;
 }
-
+              
 static float adi_5_19_to_float(int32_t value)
 {
 	return (float)value / ADI_5_19_FULL_SCALE_INT;
@@ -347,20 +489,31 @@ int adau_read_int(const struct backend_ops *backend, unsigned int addr, int *val
 {
 	int ret;
 	uint8_t data[4];
+	uint32_t uValue;
 	if ((ret = adau_read(backend, addr, sizeof(data), data)) < 0)
 		return ret;
-	*value = data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3];
+	uValue = data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3];
+	uValue &= 0xFFFFFFF; // 28-bits
+	if (uValue & 0x8000000)
+	{
+		// the MSB is set indicating a negative value - sign-extend the 28-bit value to 32-bits, take the two's complement and negate
+		*value = (~(uValue | 0xF0000000) + 1) * -1;
+	}
+	else
+	{
+		*value = uValue;
+	}
 	return 0;
 }
 
-int adau_write_int(const struct backend_ops *backend, unsigned int addr, int value)
+int adau_safeload_int(const struct backend_ops *backend, unsigned int addr, int value)
 {
 	uint8_t data[4];
 	data[0] = (value >> 24) & 0xFF;
 	data[1] = (value >> 16) & 0xFF;
 	data[2] = (value >> 8) & 0xFF;
 	data[3] = value & 0xFF;
-	return adau_write(backend, addr, sizeof(data), data);
+	return adau_safeload(backend, addr, sizeof(data), data);
 }
 
 int adau_read_float(const struct backend_ops *backend, unsigned int addr, float *value)
@@ -391,8 +544,8 @@ int adau_readback_float(const struct backend_ops *backend, unsigned int capture_
 	return 0;
 }
 
-int adau_write_float(const struct backend_ops *backend, unsigned int addr, float value)
+int adau_safeload_float(const struct backend_ops *backend, unsigned int addr, float value)
 {
 	int32_t value_5_23 = float_to_5_23(value);
-	return adau_write_int(backend, addr, value_5_23);
+	return adau_safeload_int(backend, addr, value_5_23);
 }
