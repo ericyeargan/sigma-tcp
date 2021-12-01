@@ -47,7 +47,7 @@ esp_err_t esp_i2c_open(int gpio_num_scl, int gpio_num_sda)
 #define ACK_CHECK_DIS 0x0                       /*!< I2C master will not check ack from slave */
  
 /* From a later version of esp-idf's I2C driver (i2c.c) */
-static esp_err_t i2c_master_write_read_device(i2c_port_t i2c_num, uint8_t device_address,
+static esp_err_t esp_i2c_master_write_read_device(i2c_port_t i2c_num, uint8_t device_address,
                                        const uint8_t* write_buffer, size_t write_size,
                                        uint8_t* read_buffer, size_t read_size,
                                        TickType_t ticks_to_wait)
@@ -103,9 +103,9 @@ int esp_i2c_backend_read(unsigned int addr, unsigned int len, uint8_t *data)
     int ret;
 
     uint8_t write_buffer[] = {addr >> 8, addr & 0xFF};
-    if ((ret = i2c_master_write_read_device(I2C_MASTER_NUM, ADAU_I2C_ADDR, write_buffer, sizeof(write_buffer), data, len, 1000 / portTICK_RATE_MS)))
+    if ((ret = esp_i2c_master_write_read_device(I2C_MASTER_NUM, ADAU_I2C_ADDR, write_buffer, sizeof(write_buffer), data, len, 1000 / portTICK_RATE_MS)))
     {
-        ESP_LOGE(TAG, "i2c_master_write_read_device returned 0x%X", ret);
+        ESP_LOGE(TAG, "esp_i2c_master_write_read_device returned 0x%X", ret);
         return -1;
     }
 
