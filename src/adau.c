@@ -526,19 +526,30 @@ int adau_read_float(const struct backend_ops *backend, unsigned int addr, float 
 	return 0;
 }
 
-int adau_readback_float(const struct backend_ops *backend, unsigned int capture_addr, unsigned int capture_addr_val, float *value)
+int adau_readback_int(const struct backend_ops *backend, unsigned int capture_addr, unsigned int capture_addr_val, int *value)
 {
 	int ret;
 	uint8_t write_buf[2] = {capture_addr_val >> 8, capture_addr_val};
 	uint8_t data[3];
-	int32_t int_value;
 
 	if ((ret = adau_write(backend, capture_addr, sizeof(write_buf), write_buf)) < 0)
 		return ret;
 	if ((ret = adau_read(backend, capture_addr, sizeof(data), data)))
 		return ret;
 
-	int_value = data[0] << 16 | data[1] << 8 | data[2];
+	*value = data[0] << 16 | data[1] << 8 | data[2];
+
+	return 0;
+}
+
+int adau_readback_float(const struct backend_ops *backend, unsigned int capture_addr, unsigned int capture_addr_val, float *value)
+{
+	int ret;
+	int32_t int_value;
+
+	if ((ret = adau_readback_int(backend, capture_addr, capture_addr_val, &int_value)) < 0)
+		return ret;
+
 	*value = adi_5_19_to_float(int_value);
 
 	return 0;

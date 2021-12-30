@@ -18,6 +18,7 @@ int adau_read_int(const struct backend_ops *backend, unsigned int addr, int *val
 int adau_safeload_int(const struct backend_ops *backend, unsigned int addr, int value);
 int adau_safeload_float(const struct backend_ops *backend, unsigned int addr, float value);
 
+int adau_readback_int(const struct backend_ops *backend, unsigned int capture_addr, unsigned int capture_addr_val, int *value);
 int adau_readback_float(const struct backend_ops *backend, unsigned int capture_addr, unsigned int capture_addr_val, float *value);
 
 #ifdef SIGMA_TCP_EEPROM_PROGRAM
